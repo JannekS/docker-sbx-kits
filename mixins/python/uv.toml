@@ -1,0 +1,5 @@
+# System-wide uv configuration. The release cooldown (exclude-newer) is
+# dynamic and is exported as UV_EXCLUDE_NEWER by the kit's startup hook.
+python-downloads = "never"
+compile-bytecode = true
+link-mode = "copy"

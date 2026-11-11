@@ -1,0 +1,51 @@
+# syntax=docker/sandbox-kit:3
+schemaVersion: "3"
+kind: mixin
+displayName: Python toolchain (uv)
+description: >-
+  Python 3 plus a pinned uv, with a supply-chain cooldown: uv's
+  exclude-newer is refreshed on every sandbox start to "now minus
+  cooldown_days" (default 3 days), so freshly published packages are not
+  installed. uv never downloads standalone Python builds.
+sourceUrl: https://github.com/astral-sh/uv
+licenses: [Apache-2.0]
+version: "1.0.0"
+
+args:
+  uv_version:
+    default: "0.9.25"
+    pattern: '^[0-9]+\.[0-9]+\.[0-9]+$'
+    description: uv release to install
+    buildArg: UV_VERSION
+  cooldown_days:
+    default: "3"
+    pattern: '^[1-9][0-9]*$'
+    description: Release cooldown in days, applied via uv exclude-newer (UV_EXCLUDE_NEWER)
+
+provides: ["uv@${{ kit.args.uv_version }}", "python3"]
+
+capabilities:
+  - type: com.docker.sandbox/network-policy@1
+    config:
+      runtime:
+        allow:
+          - pypi.org
+          - files.pythonhosted.org
+
+  - type: com.docker.sandbox/lifecycle@1
+    config:
+      startup:
+        # Refresh UV_EXCLUDE_NEWER on every boot so the cooldown is always
+        # "3 days before now", not a stale date from sandbox creation. The
+        # export lives in /etc/sandbox-persistent.sh (sourced via BASH_ENV).
+        - command:
+            - sh
+            - -c
+            - |
+              set -eu
+              f=/etc/sandbox-persistent.sh
+              touch "$f"
+              sed -i '/UV_EXCLUDE_NEWER/d' "$f"
+              printf '\nexport UV_EXCLUDE_NEWER=%s\n' \
+                "$(date -u -d "-${{ kit.args.cooldown_days }} days" +%Y-%m-%dT%H:%M:%SZ)" >> "$f"
+          description: Refresh uv release cooldown (UV_EXCLUDE_NEWER = now - cooldown_days)

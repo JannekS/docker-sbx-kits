@@ -1,0 +1,136 @@
+# syntax=docker/sandbox-kit:3
+schemaVersion: "3"
+kind: workload
+displayName: Mistral Vibe base
+description: >-
+  Mistral Vibe coding-agent sandbox base. Mistral and OpenCode Go are wired
+  as inference providers: the API keys stay on the host and the sandbox proxy
+  injects them only into the matching API domains.
+sourceUrl: https://github.com/mistralai/vibe
+licenses: [Apache-2.0]
+version: "${{ kit.args.version }}"
+
+args:
+  version:
+    default: "2.25.8"
+    pattern: '^[0-9]+\.[0-9]+\.[0-9]+$'
+    description: mistral-vibe release (PyPI) to install
+    buildArg: VIBE_VERSION
+  node_version:
+    default: "26.13.0"
+    pattern: '^[0-9]+\.[0-9]+\.[0-9]+$'
+    description: Node.js release installed into the base (used by the socket-firewall mixin)
+    buildArg: NODE_VERSION
+  agent:
+    default: "auto-approve"
+    pattern: '^[A-Za-z0-9_-]+$'
+    description: Vibe agent profile to start (builtin or ~/.vibe/agents/NAME.toml)
+    env: VIBE_AGENT
+
+provides:
+  - "vibe@${{ kit.args.version }}"
+  - "node@${{ kit.args.node_version }}"
+
+capabilities:
+  - type: com.docker.sandbox/sbx@1
+
+  - type: com.docker.sandbox/network-policy@1
+    config:
+      runtime:
+        allow:
+          # Mistral inference + console hosts (credential inject domains below).
+          - api.mistral.ai
+          - chat.mistral.ai
+          - console.mistral.ai
+          - experiments.mistral.services
+          # OpenCode Go inference and OpenCode console hosts.
+          - opencode.ai
+          - "*.opencode.ai"
+          # Git hosts for cloning.
+          - github.com
+          - api.github.com
+          - raw.githubusercontent.com
+          - codeload.github.com
+          - "*.githubusercontent.com"
+          # npm (socket-firewall's first-run binary fetch, tool installs).
+          - registry.npmjs.org
+          # apt sources shipped by the shell-docker base.
+          - archive.ubuntu.com
+          - security.ubuntu.com
+          - ports.ubuntu.com
+          - download.docker.com
+          - cli.github.com
+
+  - type: com.docker.sandbox/credential@1
+    optional: true
+    description: Mistral API key (https://console.mistral.ai/api-keys)
+    config:
+      service: mistral
+      phase: runtime
+      apiKey:
+        name: MISTRAL_API_KEY
+        proxyManaged: true
+        inject:
+          - {domain: api.mistral.ai, header: Authorization, format: "Bearer %s"}
+          - {domain: chat.mistral.ai, header: Authorization, format: "Bearer %s"}
+          - {domain: console.mistral.ai, header: Authorization, format: "Bearer %s"}
+
+  - type: com.docker.sandbox/credential@1
+    optional: true
+    description: OpenCode Go API key (https://opencode.ai console, Go plan)
+    config:
+      service: opencode
+      phase: runtime
+      apiKey:
+        name: OPENCODE_API_KEY
+        proxyManaged: true
+        inject:
+          - {domain: opencode.ai, header: Authorization, format: "Bearer %s"}
+
+  # Keeps config.toml, sessions, logs, custom agents and .env across
+  # re-creations of a sandbox with the same name.
+  - type: com.docker.sandbox/volume@1
+    description: Vibe state — config, sessions, logs, custom agents
+    config: {path: /home/agent/.vibe, size: 1g}
+
+  - type: com.docker.sandbox/lifecycle@1
+    config:
+      startup:
+        # ~/.vibe is a persistent volume mounted root-owned; hand it back to
+        # the agent user on every start.
+        - command: [sh, -c, "mkdir -p /home/agent/.vibe && chown agent:agent /home/agent/.vibe"]
+          user: "0"
+          description: Hand ~/.vibe (persistent volume) back to the agent user
+        # Register both inference providers in ~/.vibe/config.toml. Keys are
+        # referenced by env name only; the container holds proxy sentinels.
+        - command:
+            - sh
+            - -c
+            - |
+              set -e
+              mkdir -p "$HOME/.vibe"
+              f="$HOME/.vibe/config.toml"
+              touch "$f"
+              if ! grep -q '\[providers.opencode-go\]' "$f"; then
+                cat >> "$f" <<'EOF'
+
+              [providers.mistral]
+              api_key_env = "MISTRAL_API_KEY"
+              base_url = "https://api.mistral.ai/v1"
+
+              [providers.opencode-go]
+              api_key_env = "OPENCODE_API_KEY"
+              base_url = "https://opencode.ai/inference/go/openai/v1"
+              EOF
+              fi
+          description: Register Mistral and OpenCode Go providers in ~/.vibe/config.toml
+
+  - type: com.docker.sandbox/agent-sessions@1
+    description: Drive vibe non-interactively
+    config:
+      prompt: ["-p", "{{.Prompt}}"]
+
+  - type: com.docker.sandbox/agent-context@1
+    config:
+      filename: AGENTS.md
+      contentFile: ./context.md

@@ -1,0 +1,8 @@
+# pnpm 10.x reads cooldown settings from .npmrc.
+# 4320 minutes = 3 days: refuse package versions published less than 3 days ago.
+minimum-release-age=4320
+# Never run pre/post scripts of the pnpm project itself.
+enable-pre-post-scripts=false
+# Dependency build scripts only run for packages allow-listed in
+# onlyBuiltDependencies / allowBuilds (pnpm >= 10 default); none are listed,
+# so no install scripts run by default.

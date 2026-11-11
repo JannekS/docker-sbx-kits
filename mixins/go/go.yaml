@@ -1,0 +1,54 @@
+# syntax=docker/sandbox-kit:3
+schemaVersion: "3"
+kind: mixin
+displayName: Go toolchain
+description: >-
+  The latest Go release (pinned via the go_version arg, default the current
+  stable) plus gopls, gofumpt, delve and golangci-lint. PATH is extended via
+  the persistent shell environment.
+sourceUrl: https://go.dev
+licenses: [Apache-2.0]
+version: "1.0.0"
+
+args:
+  go_version:
+    default: "1.27.3"
+    pattern: '^[0-9]+\.[0-9]+\.[0-9]+$'
+    description: Go release to install (latest stable at authoring time; bump to track newer releases)
+    buildArg: GO_VERSION
+
+provides: ["go@${{ kit.args.go_version }}"]
+
+capabilities:
+  - type: com.docker.sandbox/network-policy@1
+    config:
+      runtime:
+        allow:
+          # Go module proxy and checksum database.
+          - proxy.golang.org
+          - sum.golang.org
+          - go.dev
+          - golang.org
+          # Module and tool sources on GitHub.
+          - github.com
+          - api.github.com
+          - raw.githubusercontent.com
+          - codeload.github.com
+          - "*.githubusercontent.com"
+
+  - type: com.docker.sandbox/lifecycle@1
+    config:
+      install:
+        # Put the Go toolchain and GOPATH/bin on PATH for every shell session.
+        - command:
+            - sh
+            - -c
+            - |
+              set -eu
+              f=/etc/sandbox-persistent.sh
+              touch "$f"
+              if ! grep -q '/usr/local/go/bin' "$f"; then
+                printf '\nexport PATH="/usr/local/go/bin:/go/bin:$PATH"\n' >> "$f"
+              fi
+          user: "0"
+          description: Add Go toolchain and GOPATH/bin to PATH

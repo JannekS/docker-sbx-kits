@@ -1,0 +1,6 @@
+# pnpm 11+ reads non-auth settings from ~/.config/pnpm/config.yaml instead of
+# .npmrc. Same policy as the .npmrc beside this file: 3-day cooldown
+# (4320 minutes), no pre/post scripts, no dependency build scripts unless
+# explicitly allow-listed per project.
+minimumReleaseAge: 4320
+enablePrePostScripts: false

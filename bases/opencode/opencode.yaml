@@ -1,0 +1,131 @@
+# syntax=docker/sandbox-kit:3
+schemaVersion: "3"
+kind: workload
+displayName: OpenCode base
+description: >-
+  OpenCode coding-agent sandbox base. Mistral and OpenCode Go are wired as
+  inference providers: the API keys stay on the host and the sandbox proxy
+  injects them only into the matching API domains.
+sourceUrl: https://github.com/anomalyco/opencode
+licenses: [MIT]
+version: "${{ kit.args.version }}"
+
+args:
+  version:
+    default: "2.0.29"
+    pattern: '^[0-9]+\.[0-9]+\.[0-9]+$'
+    description: OpenCode release to install (npm @opencode/cli)
+    buildArg: OPENCODE_VERSION
+  node_version:
+    default: "26.13.0"
+    pattern: '^[0-9]+\.[0-9]+\.[0-9]+$'
+    description: Node.js release installed into the base (also used by the socket-firewall mixin)
+    buildArg: NODE_VERSION
+
+provides:
+  - "opencode@${{ kit.args.version }}"
+  - "node@${{ kit.args.node_version }}"
+
+capabilities:
+  - type: com.docker.sandbox/sbx@1
+
+  - type: com.docker.sandbox/network-policy@1
+    config:
+      runtime:
+        allow:
+          # Mistral inference + console hosts (credential inject domains below).
+          - api.mistral.ai
+          - chat.mistral.ai
+          - console.mistral.ai
+          - experiments.mistral.services
+          # OpenCode Go inference (https://opencode.ai/inference/go/...) and
+          # OpenCode's own console/model catalog.
+          - opencode.ai
+          - "*.opencode.ai"
+          # Git hosts for cloning and OpenCode's on-demand language servers.
+          - github.com
+          - api.github.com
+          - raw.githubusercontent.com
+          - codeload.github.com
+          - "*.githubusercontent.com"
+          # npm for language servers, plugins and provider SDK packages.
+          - registry.npmjs.org
+          # apt sources shipped by the shell-docker base.
+          - archive.ubuntu.com
+          - security.ubuntu.com
+          - ports.ubuntu.com
+          - download.docker.com
+          - cli.github.com
+
+  - type: com.docker.sandbox/credential@1
+    optional: true
+    description: Mistral API key (https://console.mistral.ai/api-keys)
+    config:
+      service: mistral
+      phase: runtime
+      apiKey:
+        name: MISTRAL_API_KEY
+        proxyManaged: true
+        inject:
+          - {domain: api.mistral.ai, header: Authorization, format: "Bearer %s"}
+          - {domain: chat.mistral.ai, header: Authorization, format: "Bearer %s"}
+          - {domain: console.mistral.ai, header: Authorization, format: "Bearer %s"}
+
+  - type: com.docker.sandbox/credential@1
+    optional: true
+    description: OpenCode Go API key (https://opencode.ai console, Go plan)
+    config:
+      service: opencode
+      phase: runtime
+      apiKey:
+        name: OPENCODE_API_KEY
+        proxyManaged: true
+        inject:
+          - {domain: opencode.ai, header: Authorization, format: "Bearer %s"}
+
+  - type: com.docker.sandbox/lifecycle@1
+    config:
+      startup:
+        # Register both inference providers in OpenCode's global config. The
+        # API keys are referenced as {env:...} placeholders; the container only
+        # ever holds the proxy sentinel and the proxy substitutes the real key.
+        - command:
+            - sh
+            - -c
+            - |
+              set -e
+              mkdir -p "$HOME/.config/opencode"
+              f="$HOME/.config/opencode/opencode.json"
+              touch "$f"
+              jq '
+                .provider = ((.provider // {}) + {
+                  "mistral": {
+                    "npm": "@ai-sdk/openai-compatible",
+                    "name": "Mistral La Plateforme",
+                    "options": {"baseURL": "https://api.mistral.ai/v1", "apiKey": "{env:MISTRAL_API_KEY}"},
+                    "models": {
+                      "mistral-large-latest": {"name": "Mistral Large"},
+                      "devstral-latest": {"name": "Devstral"}
+                    }
+                  },
+                  "opencode-go": {
+                    "npm": "@ai-sdk/openai-compatible",
+                    "name": "OpenCode Go",
+                    "options": {"baseURL": "https://opencode.ai/inference/go/openai/v1", "apiKey": "{env:OPENCODE_API_KEY}"},
+                    "models": {
+                      "glm-5.3-flash": {"name": "GLM 5.3 Flash (OpenCode Go)"}
+                    }
+                  }
+                })
+              ' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
+          description: Register Mistral and OpenCode Go providers in opencode.json
+
+  - type: com.docker.sandbox/agent-sessions@1
+    description: Drive opencode non-interactively
+    config:
+      prompt: ["run", "{{.Prompt}}"]
+
+  - type: com.docker.sandbox/agent-context@1
+    config:
+      filename: AGENTS.md
+      contentFile: ./context.md

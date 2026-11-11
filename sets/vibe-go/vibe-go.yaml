@@ -1,0 +1,12 @@
+# syntax=docker/sandbox-kit:3
+schemaVersion: "3"
+kind: set
+displayName: Vibe + Go
+description: Mistral Vibe agent base with Socket Firewall and the Go toolchain.
+version: "1.0.0"
+
+# Replace NAMESPACE with your Docker Hub namespace when publishing.
+kits:
+  - ref: docker.io/NAMESPACE/vibe:1.0.0
+  - ref: docker.io/NAMESPACE/socket-firewall:1.0.0
+  - ref: docker.io/NAMESPACE/go:1.0.0

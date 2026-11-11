@@ -1,0 +1,31 @@
+# syntax=docker/sandbox-kit:3
+schemaVersion: "3"
+kind: mixin
+displayName: TypeScript toolchain (pnpm)
+description: >-
+  Pinned pnpm on top of the workload's Node.js, with a 3-day release
+  cooldown (minimumReleaseAge 4320 minutes) and install scripts disabled by
+  default (pnpm 10+ only runs build scripts for explicitly allow-listed
+  packages; none are allow-listed here).
+sourceUrl: https://pnpm.io
+licenses: [Apache-2.0]
+version: "1.0.0"
+
+args:
+  pnpm_version:
+    default: "10.16.0"
+    pattern: '^[0-9]+\.[0-9]+\.[0-9]+$'
+    description: pnpm release to install (the 3-day cooldown is baked into the config files beside this descriptor)
+    buildArg: PNPM_VERSION
+
+provides: ["pnpm@${{ kit.args.pnpm_version }}"]
+
+# Node.js comes from the composed workload (both bases provide a pinned node@).
+requires: ["node >= 20.0.0"]
+
+capabilities:
+  - type: com.docker.sandbox/network-policy@1
+    config:
+      runtime:
+        allow:
+          - registry.npmjs.org

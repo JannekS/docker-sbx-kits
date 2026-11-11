@@ -1,0 +1,12 @@
+# syntax=docker/sandbox-kit:3
+schemaVersion: "3"
+kind: set
+displayName: OpenCode + TypeScript
+description: OpenCode agent base with Socket Firewall and the TypeScript (pnpm) toolchain.
+version: "1.0.0"
+
+# Replace NAMESPACE with your Docker Hub namespace when publishing.
+kits:
+  - ref: docker.io/NAMESPACE/opencode:1.0.0
+  - ref: docker.io/NAMESPACE/socket-firewall:1.0.0
+  - ref: docker.io/NAMESPACE/typescript:1.0.0
